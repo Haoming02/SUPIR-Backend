@@ -1,12 +1,13 @@
-# pytorch_diffusion + derived encoder decoder
-import math
-from typing import Any, Callable, Optional
+from ...modules.attention import LinearAttention, MemoryEfficientCrossAttention
 
+from typing import Any, Callable, Optional
+from packaging import version
+from einops import rearrange
+
+import torch.nn as nn
 import numpy as np
 import torch
-import torch.nn as nn
-from einops import rearrange
-from packaging import version
+import math
 
 try:
     import xformers
@@ -16,8 +17,6 @@ try:
 except:
     XFORMERS_IS_AVAILABLE = False
     print("no module 'xformers'. Processing without...")
-
-from ...modules.attention import LinearAttention, MemoryEfficientCrossAttention
 
 
 def get_timestep_embedding(timesteps, embedding_dim):
@@ -288,12 +287,10 @@ def make_attn(in_channels, attn_type="vanilla", attn_kwargs=None):
             f"as it is too expensive. Please install xformers via e.g. 'pip install xformers==0.0.16'"
         )
         attn_type = "vanilla-xformers"
-    print(f"making attention of type '{attn_type}' with {in_channels} in_channels")
     if attn_type == "vanilla":
         assert attn_kwargs is None
         return AttnBlock(in_channels)
     elif attn_type == "vanilla-xformers":
-        print(f"building MemoryEfficientAttnBlock with {in_channels} in_channels...")
         return MemoryEfficientAttnBlock(in_channels)
     elif type == "memory-efficient-cross-attn":
         attn_kwargs["query_dim"] = in_channels

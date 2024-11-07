@@ -1,16 +1,14 @@
-import math
 from abc import abstractmethod
-from functools import partial
+from einops import rearrange
 from typing import Iterable
 
+import torch.nn.functional as F
+import torch.nn as nn
 import numpy as np
 import torch as th
-import torch.nn as nn
-import torch.nn.functional as F
-# from einops._torch_specific import allow_ops_in_compiled_graph
-# allow_ops_in_compiled_graph()
-from einops import rearrange
+import math
 
+from ...util import default, exists
 from ...modules.attention import SpatialTransformer
 from ...modules.diffusionmodules.util import (
     avg_pool_nd,
@@ -21,7 +19,6 @@ from ...modules.diffusionmodules.util import (
     timestep_embedding,
     zero_module,
 )
-from ...util import default, exists
 
 
 # dummy replace
@@ -144,7 +141,7 @@ class Upsample(nn.Module):
         else:
             x = F.interpolate(x, scale_factor=2, mode="nearest")
 
-        x = x.to(_dtype) # support fp32 only
+        x = x.to(_dtype)  # support fp32 only
 
         if self.use_conv:
             x = self.conv(x)
@@ -637,11 +634,7 @@ class UNetModel(nn.Module):
         )
 
         self.use_fairscale_checkpoint = False
-        checkpoint_wrapper_fn = (
-            partial(checkpoint_wrapper, offload_to_cpu=offload_to_cpu)
-            if self.use_fairscale_checkpoint
-            else lambda x: x
-        )
+        checkpoint_wrapper_fn = lambda x: x
 
         time_embed_dim = model_channels * 4
         self.time_embed = checkpoint_wrapper_fn(
@@ -803,27 +796,29 @@ class UNetModel(nn.Module):
                     use_scale_shift_norm=use_scale_shift_norm,
                 )
             ),
-            checkpoint_wrapper_fn(
-                AttentionBlock(
-                    ch,
-                    use_checkpoint=use_checkpoint,
-                    num_heads=num_heads,
-                    num_head_channels=dim_head,
-                    use_new_attention_order=use_new_attention_order,
+            (
+                checkpoint_wrapper_fn(
+                    AttentionBlock(
+                        ch,
+                        use_checkpoint=use_checkpoint,
+                        num_heads=num_heads,
+                        num_head_channels=dim_head,
+                        use_new_attention_order=use_new_attention_order,
+                    )
                 )
-            )
-            if not use_spatial_transformer
-            else checkpoint_wrapper_fn(
-                SpatialTransformer(  # always uses a self-attn
-                    ch,
-                    num_heads,
-                    dim_head,
-                    depth=transformer_depth_middle,
-                    context_dim=context_dim,
-                    disable_self_attn=disable_middle_self_attn,
-                    use_linear=use_linear_in_transformer,
-                    attn_type=spatial_transformer_attn_type,
-                    use_checkpoint=use_checkpoint,
+                if not use_spatial_transformer
+                else checkpoint_wrapper_fn(
+                    SpatialTransformer(  # always uses a self-attn
+                        ch,
+                        num_heads,
+                        dim_head,
+                        depth=transformer_depth_middle,
+                        context_dim=context_dim,
+                        disable_self_attn=disable_middle_self_attn,
+                        use_linear=use_linear_in_transformer,
+                        attn_type=spatial_transformer_attn_type,
+                        use_checkpoint=use_checkpoint,
+                    )
                 )
             ),
             checkpoint_wrapper_fn(
@@ -972,7 +967,9 @@ class UNetModel(nn.Module):
         ), "must specify y if and only if the model is class-conditional"
         hs = []
 
-        t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False).to(x.dtype)
+        t_emb = timestep_embedding(
+            timesteps, self.model_channels, repeat_only=False
+        ).to(x.dtype)
         emb = self.time_embed(t_emb)
 
         if self.num_classes is not None:

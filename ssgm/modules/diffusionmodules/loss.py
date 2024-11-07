@@ -1,11 +1,11 @@
-from typing import List, Optional, Union
+from ...modules.autoencoding.lpips.loss.lpips import LPIPS
+from ...util import append_dims, instantiate_from_config
 
-import torch
-import torch.nn as nn
+from typing import List, Optional, Union
 from omegaconf import ListConfig
 
-from ...util import append_dims, instantiate_from_config
-from ...modules.autoencoding.lpips.loss.lpips import LPIPS
+import torch.nn as nn
+import torch
 
 
 class StandardDiffusionLoss(nn.Module):

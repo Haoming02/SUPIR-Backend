@@ -1,6 +1,6 @@
-import torch.nn as nn
-
 from ...util import append_dims, instantiate_from_config
+
+import torch.nn as nn
 
 
 class Denoiser(nn.Module):
@@ -70,4 +70,6 @@ class DiscreteDenoiserWithControl(DiscreteDenoiser):
         sigma = append_dims(sigma, input.ndim)
         c_skip, c_out, c_in, c_noise = self.scaling(sigma)
         c_noise = self.possibly_quantize_c_noise(c_noise.reshape(sigma_shape))
-        return network(input * c_in, c_noise, cond, control_scale) * c_out + input * c_skip
+        return (
+            network(input * c_in, c_noise, cond, control_scale) * c_out + input * c_skip
+        )

@@ -1,11 +1,11 @@
+from ....modules.distributions.distributions import DiagonalGaussianDistribution
+
 from abc import abstractmethod
 from typing import Any, Tuple
 
-import torch
-import torch.nn as nn
 import torch.nn.functional as F
-
-from ....modules.distributions.distributions import DiagonalGaussianDistribution
+import torch.nn as nn
+import torch
 
 
 class AbstractRegularizer(nn.Module):

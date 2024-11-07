@@ -1,5 +1,5 @@
-import torch
 import torch.nn.functional as F
+import torch
 
 
 def hinge_d_loss(logits_real, logits_fake):

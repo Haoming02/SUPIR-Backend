@@ -1,22 +1,20 @@
-from contextlib import nullcontext
-from functools import partial
 from typing import Dict, List, Optional, Tuple, Union
-
-import kornia
-import numpy as np
-import open_clip
-import torch
-import torch.nn as nn
-from einops import rearrange, repeat
-from omegaconf import ListConfig
 from torch.utils.checkpoint import checkpoint
+from einops import rearrange, repeat
+from contextlib import nullcontext
+from omegaconf import ListConfig
+from functools import partial
 from transformers import (
     ByT5Tokenizer,
-    CLIPTextModel,
-    CLIPTokenizer,
     T5EncoderModel,
     T5Tokenizer,
 )
+
+import torch.nn as nn
+import numpy as np
+import open_clip
+import kornia
+import torch
 
 from ...modules.autoencoding.regularizers import DiagonalGaussianRegularizer
 from ...modules.diffusionmodules.model import Encoder
@@ -96,10 +94,6 @@ class GeneralConditioner(nn.Module):
                 for param in embedder.parameters():
                     param.requires_grad = False
                 embedder.eval()
-            print(
-                f"Initialized embedder #{n}: {embedder.__class__.__name__} "
-                f"with {count_params(embedder, False)} params. Trainable: {embedder.is_trainable}"
-            )
 
             if "input_key" in embconfig:
                 embedder.input_key = embconfig["input_key"]
@@ -296,32 +290,6 @@ class PreparedConditioner(nn.Module):
         else:
             uc = None
         return c, uc
-
-
-class InceptionV3(nn.Module):
-    """Wrapper around the https://github.com/mseitzer/pytorch-fid inception
-    port with an additional squeeze at the end"""
-
-    def __init__(self, normalize_input=False, **kwargs):
-        super().__init__()
-        from pytorch_fid import inception
-
-        kwargs["resize_input"] = True
-        self.model = inception.InceptionV3(normalize_input=normalize_input, **kwargs)
-
-    def forward(self, inp):
-        # inp = kornia.geometry.resize(inp, (299, 299),
-        #                              interpolation='bicubic',
-        #                              align_corners=False,
-        #                              antialias=True)
-        # inp = inp.clamp(min=-1, max=1)
-
-        outp = self.model(inp)
-
-        if len(outp) == 1:
-            return outp[0].squeeze()
-
-        return outp
 
 
 class IdentityEncoder(AbstractEmbModel):
@@ -840,10 +808,6 @@ class FrozenOpenCLIPImageEmbedder(AbstractEmbModel):
             )
             if tokens is not None:
                 tokens = rearrange(tokens, "(b n) t d -> b t (n d)", n=self.max_crops)
-                print(
-                    f"You are running very experimental token-concat in {self.__class__.__name__}. "
-                    f"Check what you are doing, and then remove this message."
-                )
         if self.output_tokens:
             return x, tokens
         return x
@@ -866,10 +830,6 @@ class FrozenCLIPT5Encoder(AbstractEmbModel):
             clip_version, device, max_length=clip_max_length
         )
         self.t5_encoder = FrozenT5Embedder(t5_version, device, max_length=t5_max_length)
-        print(
-            f"{self.clip_encoder.__class__.__name__} has {count_params(self.clip_encoder) * 1.e-6:.2f} M parameters, "
-            f"{self.t5_encoder.__class__.__name__} comes with {count_params(self.t5_encoder) * 1.e-6:.2f} M params."
-        )
 
     def encode(self, text):
         return self(text)
@@ -908,9 +868,6 @@ class SpatialRescaler(nn.Module):
         self.interpolator = partial(torch.nn.functional.interpolate, mode=method)
         self.remap_output = out_channels is not None or remap_output
         if self.remap_output:
-            print(
-                f"Spatial Rescaler mapping from {in_channels} to {out_channels} channels after resizing."
-            )
             self.channel_mapper = nn.Conv2d(
                 in_channels,
                 out_channels,
