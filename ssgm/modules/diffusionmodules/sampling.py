@@ -380,8 +380,6 @@ class SubstepSampler(EulerAncestralSampler):
         sigmas = sigmas[
             self.steps_subset[: self.num_steps] + self.steps_subset[-1:]
         ]
-        print(sigmas)
-        # uc = cond
         x *= torch.sqrt(1.0 + sigmas[0] ** 2.0)
         num_sigmas = len(sigmas)
         s_in = x.new_ones([x.shape[0]])
@@ -575,6 +573,8 @@ class RestoreEDMSampler(SingleStepDiffusionSampler):
             x, cond, uc, num_steps
         )
 
+        pbar = tqdm(total=int(num_sigmas - 1), desc="[Sampling]")
+
         for _idx, i in enumerate(self.get_sigma_gen(num_sigmas)):
             gamma = (
                 min(self.s_churn / (num_sigmas - 1), 2**0.5 - 1)
@@ -594,6 +594,9 @@ class RestoreEDMSampler(SingleStepDiffusionSampler):
                 use_linear_control_scale=use_linear_control_scale,
                 control_scale_start=control_scale_start,
             )
+            pbar.update(1)
+
+        pbar.close()
         return x
 
 

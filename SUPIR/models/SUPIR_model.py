@@ -1,8 +1,8 @@
 import torch
-from sgm.models.diffusion import DiffusionEngine
-from sgm.util import instantiate_from_config
+from ssgm.models.diffusion import DiffusionEngine
+from ssgm.util import instantiate_from_config
 import copy
-from sgm.modules.distributions.distributions import DiagonalGaussianDistribution
+from ssgm.modules.distributions.distributions import DiagonalGaussianDistribution
 import random
 from SUPIR.utils.colorfix import wavelet_reconstruction, adaptive_instance_normalization
 from pytorch_lightning import seed_everything
@@ -48,10 +48,7 @@ class SUPIRModel(DiffusionEngine):
     @torch.no_grad()
     def encode_first_stage_with_denoise(self, x, use_sample=True, is_stage1=False):
         with torch.autocast("cuda", dtype=self.ae_dtype):
-            if is_stage1:
-                h = self.first_stage_model.denoise_encoder_s1(x)
-            else:
-                h = self.first_stage_model.denoise_encoder(x)
+            h = self.first_stage_model.denoise_encoder(x)
             moments = self.first_stage_model.quant_conv(h)
             posterior = DiagonalGaussianDistribution(moments)
             if use_sample:
@@ -177,19 +174,3 @@ class SUPIRModel(DiffusionEngine):
                         _c, _ = self.conditioner.get_unconditional_conditioning(batch, None)
                 c.append(_c)
         return c, uc
-
-
-if __name__ == '__main__':
-    from SUPIR.util import create_model, load_state_dict
-
-    model = create_model('../../options/dev/SUPIR_paper_version.yaml')
-
-    SDXL_CKPT = '/opt/data/private/AIGC_pretrain/SDXL_cache/sd_xl_base_1.0_0.9vae.safetensors'
-    SUPIR_CKPT = '/opt/data/private/AIGC_pretrain/SUPIR_cache/SUPIR-paper.ckpt'
-    model.load_state_dict(load_state_dict(SDXL_CKPT), strict=False)
-    model.load_state_dict(load_state_dict(SUPIR_CKPT), strict=False)
-    model = model.cuda()
-
-    x = torch.randn(1, 3, 512, 512).cuda()
-    p = ['a professional, detailed, high-quality photo']
-    samples = model.batchify_sample(x, p, num_steps=50, restoration_scale=4.0, s_churn=0, cfg_scale=4.0, seed=-1, num_samples=1)

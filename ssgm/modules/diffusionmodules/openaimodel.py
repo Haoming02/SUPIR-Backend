@@ -186,13 +186,6 @@ class Downsample(nn.Module):
         self.dims = dims
         stride = 2 if dims != 3 else ((1, 2, 2) if not third_down else (2, 2, 2))
         if use_conv:
-            print(f"Building a Downsample layer with {dims} dims.")
-            print(
-                f"  --> settings are: \n in-chn: {self.channels}, out-chn: {self.out_channels}, "
-                f"kernel-size: 3, stride: {stride}, padding: {padding}"
-            )
-            if dims == 3:
-                print(f"  --> Downsampling third axis (time): {third_down}")
             self.op = conv_nd(
                 dims,
                 self.channels,
@@ -279,7 +272,6 @@ class ResBlock(TimestepBlock):
             2 * self.out_channels if use_scale_shift_norm else self.out_channels
         )
         if self.skip_t_emb:
-            print(f"Skipping timestep embedding in {self.__class__.__name__}")
             assert not self.use_scale_shift_norm
             self.emb_layers = None
             self.exchange_temb_dims = False
@@ -628,12 +620,6 @@ class UNetModel(nn.Module):
                     range(len(num_attention_blocks)),
                 )
             )
-            print(
-                f"Constructor of UNetModel received num_attention_blocks={num_attention_blocks}. "
-                f"This option has LESS priority than attention_resolutions {attention_resolutions}, "
-                f"i.e., in cases where num_attention_blocks[i] > 0 but 2**i not in attention_resolutions, "
-                f"attention will still not be set."
-            )  # todo: convert to warning
 
         self.attention_resolutions = attention_resolutions
         self.dropout = dropout
@@ -641,9 +627,6 @@ class UNetModel(nn.Module):
         self.conv_resample = conv_resample
         self.num_classes = num_classes
         self.use_checkpoint = use_checkpoint
-        if use_fp16:
-            print("WARNING: use_fp16 was dropped and has no effect anymore.")
-        # self.dtype = th.float16 if use_fp16 else th.float32
         self.num_heads = num_heads
         self.num_head_channels = num_head_channels
         self.num_heads_upsample = num_heads_upsample
@@ -673,7 +656,6 @@ class UNetModel(nn.Module):
             if isinstance(self.num_classes, int):
                 self.label_emb = nn.Embedding(num_classes, time_embed_dim)
             elif self.num_classes == "continuous":
-                print("setting up linear c_adm embedding layer")
                 self.label_emb = nn.Linear(1, time_embed_dim)
             elif self.num_classes == "timestep":
                 self.label_emb = checkpoint_wrapper_fn(
@@ -1269,4 +1251,3 @@ if __name__ == "__main__":
     x = th.randn(11, 4, 64, 64).cuda()
     t = th.randint(low=0, high=10, size=(11,), device="cuda")
     o = model(x, t)
-    print("done.")

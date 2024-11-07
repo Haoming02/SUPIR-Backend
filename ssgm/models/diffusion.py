@@ -1,15 +1,7 @@
-from contextlib import contextmanager
-from typing import Any, Dict, List, Tuple, Union
-
-import pytorch_lightning as pl
-import torch
-from omegaconf import ListConfig, OmegaConf
-from safetensors.torch import load_file as load_safetensors
-from torch.optim.lr_scheduler import LambdaLR
-
-from ..modules import UNCONDITIONAL_CONFIG
 from ..modules.diffusionmodules.wrappers import OPENAIUNETWRAPPER
+from ..modules import UNCONDITIONAL_CONFIG
 from ..modules.ema import LitEma
+
 from ..util import (
     default,
     disabled_train,
@@ -17,6 +9,15 @@ from ..util import (
     instantiate_from_config,
     log_txt_as_img,
 )
+
+from safetensors.torch import load_file as load_safetensors
+from typing import Any, Dict, List, Tuple, Union
+from torch.optim.lr_scheduler import LambdaLR
+from omegaconf import ListConfig, OmegaConf
+from contextlib import contextmanager
+
+import pytorch_lightning as pl
+import torch
 
 
 class DiffusionEngine(pl.LightningModule):
@@ -159,9 +160,7 @@ class DiffusionEngine(pl.LightningModule):
 
         # if self.scheduler_config is not None:
         lr = self.optimizers().param_groups[0]["lr"]
-        self.log(
-            "lr_abs", lr, prog_bar=True, logger=True, on_step=True, on_epoch=False
-        )
+        self.log("lr_abs", lr, prog_bar=True, logger=True, on_step=True, on_epoch=False)
 
         return loss
 
@@ -292,9 +291,9 @@ class DiffusionEngine(pl.LightningModule):
 
         c, uc = self.conditioner.get_unconditional_conditioning(
             batch,
-            force_uc_zero_embeddings=ucg_keys
-            if len(self.conditioner.embedders) > 0
-            else [],
+            force_uc_zero_embeddings=(
+                ucg_keys if len(self.conditioner.embedders) > 0 else []
+            ),
         )
 
         sampling_kwargs = {}

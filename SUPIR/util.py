@@ -5,62 +5,58 @@ import cv2
 from PIL import Image
 from torch.nn.functional import interpolate
 from omegaconf import OmegaConf
-from sgm.util import instantiate_from_config
+from ..ssgm.util import instantiate_from_config
 
 
 def get_state_dict(d):
-    return d.get('state_dict', d)
+    return d.get("state_dict", d)
 
 
-def load_state_dict(ckpt_path, location='cpu'):
+def load_state_dict(ckpt_path, location="cpu"):
     _, extension = os.path.splitext(ckpt_path)
     if extension.lower() == ".safetensors":
         import safetensors.torch
+
         state_dict = safetensors.torch.load_file(ckpt_path, device=location)
     else:
-        state_dict = get_state_dict(torch.load(ckpt_path, map_location=torch.device(location)))
+        state_dict = get_state_dict(
+            torch.load(ckpt_path, map_location=torch.device(location))
+        )
     state_dict = get_state_dict(state_dict)
-    print(f'Loaded state_dict from [{ckpt_path}]')
+    print(f'Loaded state_dict from:\n"{ckpt_path}"')
     return state_dict
 
 
 def create_model(config_path):
     config = OmegaConf.load(config_path)
     model = instantiate_from_config(config.model).cpu()
-    print(f'Loaded model config from [{config_path}]')
+    print(f'Loaded model config from:\n"{config_path}"')
     return model
 
 
-def create_SUPIR_model(config_path, SUPIR_sign=None, load_default_setting=False):
+def create_SUPIR_model(config_path, sdxl_ckpt, supir_ckpt):
     config = OmegaConf.load(config_path)
     model = instantiate_from_config(config.model).cpu()
-    print(f'Loaded model config from [{config_path}]')
-    if config.SDXL_CKPT is not None:
-        model.load_state_dict(load_state_dict(config.SDXL_CKPT), strict=False)
-    if config.SUPIR_CKPT is not None:
-        model.load_state_dict(load_state_dict(config.SUPIR_CKPT), strict=False)
-    if SUPIR_sign is not None:
-        assert SUPIR_sign in ['F', 'Q']
-        if SUPIR_sign == 'F':
-            model.load_state_dict(load_state_dict(config.SUPIR_CKPT_F), strict=False)
-        elif SUPIR_sign == 'Q':
-            model.load_state_dict(load_state_dict(config.SUPIR_CKPT_Q), strict=False)
-    if load_default_setting:
-        default_setting = config.default_setting
-        return model, default_setting
-    return model
+    print(f'Loaded model config from:\n"{config_path}"')
+
+    sdxl_sd = load_state_dict(sdxl_ckpt)
+    model.load_state_dict(sdxl_sd, strict=False)
+    model.load_state_dict(load_state_dict(supir_ckpt), strict=False)
+
+    return model, sdxl_sd
+
 
 def load_QF_ckpt(config_path):
     config = OmegaConf.load(config_path)
-    ckpt_F = torch.load(config.SUPIR_CKPT_F, map_location='cpu')
-    ckpt_Q = torch.load(config.SUPIR_CKPT_Q, map_location='cpu')
+    ckpt_F = torch.load(config.SUPIR_CKPT_F, map_location="cpu")
+    ckpt_Q = torch.load(config.SUPIR_CKPT_Q, map_location="cpu")
     return ckpt_Q, ckpt_F
 
 
 def PIL2Tensor(img, upsacle=1, min_size=1024, fix_resize=None):
-    '''
+    """
     PIL.Image -> Tensor[C, H, W], RGB, [-1, 1]
-    '''
+    """
     # size
     w, h = img.size
     w *= upsacle
@@ -85,12 +81,18 @@ def PIL2Tensor(img, upsacle=1, min_size=1024, fix_resize=None):
 
 
 def Tensor2PIL(x, h0, w0):
-    '''
+    """
     Tensor[C, H, W], RGB, [-1, 1] -> PIL.Image
-    '''
+    """
     x = x.unsqueeze(0)
-    x = interpolate(x, size=(h0, w0), mode='bicubic')
-    x = (x.squeeze(0).permute(1, 2, 0) * 127.5 + 127.5).cpu().numpy().clip(0, 255).astype(np.uint8)
+    x = interpolate(x, size=(h0, w0), mode="bicubic")
+    x = (
+        (x.squeeze(0).permute(1, 2, 0) * 127.5 + 127.5)
+        .cpu()
+        .numpy()
+        .clip(0, 255)
+        .astype(np.uint8)
+    )
     return Image.fromarray(x)
 
 
@@ -126,7 +128,11 @@ def upscale_image(input_image, upscale, min_size=None, unit_resolution=64):
             H *= _upsacle
     H = int(np.round(H / unit_resolution)) * unit_resolution
     W = int(np.round(W / unit_resolution)) * unit_resolution
-    img = cv2.resize(input_image, (W, H), interpolation=cv2.INTER_LANCZOS4 if upscale > 1 else cv2.INTER_AREA)
+    img = cv2.resize(
+        input_image,
+        (W, H),
+        interpolation=cv2.INTER_LANCZOS4 if upscale > 1 else cv2.INTER_AREA,
+    )
     img = img.round().clip(0, 255).astype(np.uint8)
     return img
 
@@ -140,16 +146,19 @@ def fix_resize(input_image, size=512, unit_resolution=64):
     W *= upscale
     H = int(np.round(H / unit_resolution)) * unit_resolution
     W = int(np.round(W / unit_resolution)) * unit_resolution
-    img = cv2.resize(input_image, (W, H), interpolation=cv2.INTER_LANCZOS4 if upscale > 1 else cv2.INTER_AREA)
+    img = cv2.resize(
+        input_image,
+        (W, H),
+        interpolation=cv2.INTER_LANCZOS4 if upscale > 1 else cv2.INTER_AREA,
+    )
     img = img.round().clip(0, 255).astype(np.uint8)
     return img
 
 
-
 def Numpy2Tensor(img):
-    '''
+    """
     np.array[H, w, C] [0, 255] -> Tensor[C, H, W], RGB, [-1, 1]
-    '''
+    """
     # size
     img = np.array(img) / 255 * 2 - 1
     img = torch.tensor(img, dtype=torch.float32).permute(2, 0, 1)
@@ -157,23 +166,25 @@ def Numpy2Tensor(img):
 
 
 def Tensor2Numpy(x, h0=None, w0=None):
-    '''
+    """
     Tensor[C, H, W], RGB, [-1, 1] -> PIL.Image
-    '''
+    """
     if h0 is not None and w0 is not None:
         x = x.unsqueeze(0)
-        x = interpolate(x, size=(h0, w0), mode='bicubic')
+        x = interpolate(x, size=(h0, w0), mode="bicubic")
         x = x.squeeze(0)
     x = (x.permute(1, 2, 0) * 127.5 + 127.5).cpu().numpy().clip(0, 255).astype(np.uint8)
     return x
 
 
 def convert_dtype(dtype_str):
-    if dtype_str == 'fp32':
+    if dtype_str == "fp32":
         return torch.float32
-    elif dtype_str == 'fp16':
+    elif dtype_str == "fp16":
         return torch.float16
-    elif dtype_str == 'bf16':
+    elif dtype_str == "bf16":
         return torch.bfloat16
+    elif dtype_str == "fp8":
+        return torch.float8_e4m3fn
     else:
         raise NotImplementedError

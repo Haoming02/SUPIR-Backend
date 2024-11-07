@@ -32,7 +32,6 @@ from ...util import (
     instantiate_from_config,
 )
 
-from CKPT_PTH import SDXL_CLIP1_PATH, SDXL_CLIP2_CKPT_PTH
 
 class AbstractEmbModel(nn.Module):
     def __init__(self):
@@ -80,7 +79,7 @@ class AbstractEmbModel(nn.Module):
 
 class GeneralConditioner(nn.Module):
     OUTPUT_DIM2KEYS = {2: "vector", 3: "crossattn", 4: "concat", 5: "concat"}
-    KEY2CATDIM = {"vector": 1, "crossattn": 2, "concat": 1, 'control_vector': 1}
+    KEY2CATDIM = {"vector": 1, "crossattn": 2, "concat": 1, "control_vector": 1}
 
     def __init__(self, emb_models: Union[List, ListConfig]):
         super().__init__()
@@ -212,8 +211,8 @@ class GeneralConditionerWithControl(GeneralConditioner):
             if not isinstance(emb_out, (list, tuple)):
                 emb_out = [emb_out]
             for emb in emb_out:
-                if 'control_vector' in embedder.input_key:
-                    out_key = 'control_vector'
+                if "control_vector" in embedder.input_key:
+                    out_key = "control_vector"
                 else:
                     out_key = self.OUTPUT_DIM2KEYS[emb.dim()]
                 if embedder.ucg_rate > 0.0 and embedder.legacy_ucg_val is None:
@@ -253,23 +252,32 @@ class PreparedConditioner(nn.Module):
         if un_cond_pth is not None:
             un_conditions = torch.load(un_cond_pth)
             for k, v in un_conditions.items():
-                self.register_buffer(k+'_uc', v)
-
+                self.register_buffer(k + "_uc", v)
 
     @torch.no_grad()
-    def forward(
-            self, batch: Dict, return_uc=False
-    ) -> Dict:
+    def forward(self, batch: Dict, return_uc=False) -> Dict:
         output = dict()
         for k, v in self.state_dict().items():
             if not return_uc:
                 if k.endswith("_uc"):
                     continue
                 else:
-                    output[k] = v.detach().clone().repeat(batch['control'].shape[0], *[1 for _ in range(v.ndim - 1)])
+                    output[k] = (
+                        v.detach()
+                        .clone()
+                        .repeat(
+                            batch["control"].shape[0], *[1 for _ in range(v.ndim - 1)]
+                        )
+                    )
             else:
                 if k.endswith("_uc"):
-                    output[k[:-3]] = v.detach().clone().repeat(batch['control'].shape[0], *[1 for _ in range(v.ndim - 1)])
+                    output[k[:-3]] = (
+                        v.detach()
+                        .clone()
+                        .repeat(
+                            batch["control"].shape[0], *[1 for _ in range(v.ndim - 1)]
+                        )
+                    )
                 else:
                     continue
         output["control"] = batch["control"]
@@ -288,7 +296,6 @@ class PreparedConditioner(nn.Module):
         else:
             uc = None
         return c, uc
-
 
 
 class InceptionV3(nn.Module):
@@ -459,12 +466,15 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
     ):  # clip-vit-base-patch32
         super().__init__()
         assert layer in self.LAYERS
-        self.tokenizer = CLIPTokenizer.from_pretrained(version if SDXL_CLIP1_PATH is None else SDXL_CLIP1_PATH)
-        self.transformer = CLIPTextModel.from_pretrained(version if SDXL_CLIP1_PATH is None else SDXL_CLIP1_PATH)
+        # self.tokenizer = CLIPTokenizer.from_pretrained(version)
+        # self.transformer = CLIPTextModel.from_pretrained(version)
+        self.tokenizer = None
+        self.transformer = None
+
         self.device = device
         self.max_length = max_length
-        if freeze:
-            self.freeze()
+        # if freeze:
+        #     self.freeze()
         self.layer = layer
         self.layer_idx = layer_idx
         self.return_pooled = always_return_pooled
@@ -527,19 +537,20 @@ class FrozenOpenCLIPEmbedder2(AbstractEmbModel):
     ):
         super().__init__()
         assert layer in self.LAYERS
-        model, _, _ = open_clip.create_model_and_transforms(
-            arch,
-            device=torch.device("cpu"),
-            pretrained=version if SDXL_CLIP2_CKPT_PTH is None else SDXL_CLIP2_CKPT_PTH,
-        )
-        del model.visual
-        self.model = model
+        # model, _, _ = open_clip.create_model_and_transforms(
+        #     arch,
+        #     device=torch.device("cpu"),
+        #     pretrained=version,
+        # )
+        # del model.visual
+        # self.model = model
 
+        self.model = None
         self.device = device
         self.max_length = max_length
         self.return_pooled = always_return_pooled
-        if freeze:
-            self.freeze()
+        # if freeze:
+        #     self.freeze()
         self.layer = layer
         if self.layer == "last":
             self.layer_idx = 0

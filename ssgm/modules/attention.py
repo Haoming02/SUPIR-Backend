@@ -1,47 +1,35 @@
-import math
-from inspect import isfunction
-from typing import Any, Optional
-
-import torch
-import torch.nn.functional as F
-# from einops._torch_specific import allow_ops_in_compiled_graph
-# allow_ops_in_compiled_graph()
+from torch.backends.cuda import SDPBackend, sdp_kernel
 from einops import rearrange, repeat
+from typing import Any, Optional
+from inspect import isfunction
 from packaging import version
 from torch import nn
 
-if version.parse(torch.__version__) >= version.parse("2.0.0"):
-    SDP_IS_AVAILABLE = True
-    from torch.backends.cuda import SDPBackend, sdp_kernel
+import torch.nn.functional as F
+import torch
+import math
 
-    BACKEND_MAP = {
-        SDPBackend.MATH: {
-            "enable_math": True,
-            "enable_flash": False,
-            "enable_mem_efficient": False,
-        },
-        SDPBackend.FLASH_ATTENTION: {
-            "enable_math": False,
-            "enable_flash": True,
-            "enable_mem_efficient": False,
-        },
-        SDPBackend.EFFICIENT_ATTENTION: {
-            "enable_math": False,
-            "enable_flash": False,
-            "enable_mem_efficient": True,
-        },
-        None: {"enable_math": True, "enable_flash": True, "enable_mem_efficient": True},
-    }
-else:
-    from contextlib import nullcontext
 
-    SDP_IS_AVAILABLE = False
-    sdp_kernel = nullcontext
-    BACKEND_MAP = {}
-    print(
-        f"No SDP backend available, likely because you are running in pytorch versions < 2.0. In fact, "
-        f"you are using PyTorch {torch.__version__}. You might want to consider upgrading."
-    )
+SDP_IS_AVAILABLE = True
+
+BACKEND_MAP = {
+    SDPBackend.MATH: {
+        "enable_math": True,
+        "enable_flash": False,
+        "enable_mem_efficient": False,
+    },
+    SDPBackend.FLASH_ATTENTION: {
+        "enable_math": False,
+        "enable_flash": True,
+        "enable_mem_efficient": False,
+    },
+    SDPBackend.EFFICIENT_ATTENTION: {
+        "enable_math": False,
+        "enable_flash": False,
+        "enable_mem_efficient": True,
+    },
+    None: {"enable_math": True, "enable_flash": True, "enable_mem_efficient": True},
+}
 
 try:
     import xformers
@@ -271,7 +259,6 @@ class CrossAttention(nn.Module):
         """
         ## new
         with sdp_kernel(**BACKEND_MAP[self.backend]):
-            # print("dispatching into backend", self.backend, "q/k/v shape: ", q.shape, k.shape, v.shape)
             out = F.scaled_dot_product_attention(
                 q, k, v, attn_mask=mask
             )  # scale is dim_head ** -0.5 per default
@@ -291,10 +278,6 @@ class MemoryEfficientCrossAttention(nn.Module):
         self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.0, **kwargs
     ):
         super().__init__()
-        print(
-            f"Setting up {self.__class__.__name__}. Query dim is {query_dim}, context_dim is {context_dim} and using "
-            f"{heads} heads with a dimension of {dim_head}."
-        )
         inner_dim = dim_head * heads
         context_dim = default(context_dim, query_dim)
 
@@ -387,12 +370,14 @@ class BasicTransformerBlock(nn.Module):
         dropout=0.0,
         context_dim=None,
         gated_ff=True,
-        checkpoint=True,
+        checkpoint=False,
         disable_self_attn=False,
         attn_mode="softmax",
         sdp_backend=None,
     ):
         super().__init__()
+        checkpoint = False
+
         assert attn_mode in self.ATTENTION_MODES
         if attn_mode != "softmax" and not XFORMERS_IS_AVAILABLE:
             print(
@@ -438,8 +423,6 @@ class BasicTransformerBlock(nn.Module):
         self.norm2 = nn.LayerNorm(dim)
         self.norm3 = nn.LayerNorm(dim)
         self.checkpoint = checkpoint
-        if self.checkpoint:
-            print(f"{self.__class__.__name__} is using checkpointing")
 
     def forward(
         self, x, context=None, additional_tokens=None, n_times_crossframe_attn_in_self=0
@@ -470,9 +453,9 @@ class BasicTransformerBlock(nn.Module):
                 self.norm1(x),
                 context=context if self.disable_self_attn else None,
                 additional_tokens=additional_tokens,
-                n_times_crossframe_attn_in_self=n_times_crossframe_attn_in_self
-                if not self.disable_self_attn
-                else 0,
+                n_times_crossframe_attn_in_self=(
+                    n_times_crossframe_attn_in_self if not self.disable_self_attn else 0
+                ),
             )
             + x
         )
@@ -489,7 +472,7 @@ class BasicTransformerBlock(nn.Module):
 class BasicTransformerSingleLayerBlock(nn.Module):
     ATTENTION_MODES = {
         "softmax": CrossAttention,  # vanilla attention
-        "softmax-xformers": MemoryEfficientCrossAttention  # on the A100s not quite as fast as the above version
+        "softmax-xformers": MemoryEfficientCrossAttention,  # on the A100s not quite as fast as the above version
         # (todo might depend on head_dim, check, falls back to semi-optimized kernels for dim!=[16,32,64,128])
     }
 
@@ -556,20 +539,12 @@ class SpatialTransformer(nn.Module):
         sdp_backend=None,
     ):
         super().__init__()
-        print(
-            f"constructing {self.__class__.__name__} of depth {depth} w/ {in_channels} channels and {n_heads} heads"
-        )
         from omegaconf import ListConfig
 
         if exists(context_dim) and not isinstance(context_dim, (list, ListConfig)):
             context_dim = [context_dim]
         if exists(context_dim) and isinstance(context_dim, list):
             if depth != len(context_dim):
-                print(
-                    f"WARNING: {self.__class__.__name__}: Found context dims {context_dim} of depth {len(context_dim)}, "
-                    f"which does not match the specified 'depth' of {depth}. Setting context_dim to {depth * [context_dim[0]]} now."
-                )
-                # depth does not match context dims.
                 assert all(
                     map(lambda x: x == context_dim[0], context_dim)
                 ), "need homogenous context_dim to match depth automatically"

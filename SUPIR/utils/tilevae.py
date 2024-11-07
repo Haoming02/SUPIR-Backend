@@ -413,7 +413,6 @@ def build_sampling(task_queue, net, is_decoder):
         if sd_flag:
             resblock2task(task_queue, net.mid.block_1)
             attn2task(task_queue, net.mid.attn_1)
-            print(task_queue)
             resblock2task(task_queue, net.mid.block_2)
             resolution_iter = reversed(range(net.num_resolutions))
             block_ids = net.num_res_blocks + 1
@@ -611,10 +610,6 @@ class GroupNormParam:
         if var.dtype == torch.float16 and var.isinf().any():
             fp32_tile = tile.float()
             var, mean = get_var_mean(fp32_tile, 32)
-        # ============= DEBUG: test for infinite =============
-        # if torch.isinf(var).any():
-        #    print('var: ', var)
-        # ====================================================
         self.var_list.append(var)
         self.mean_list.append(mean)
         self.pixel_list.append(
@@ -811,7 +806,7 @@ class VAEHook:
             try:
                 devices.test_for_nans(tile, "vae")
             except:
-                print(f'Nan detected in fast mode estimation. Fast mode disabled.')
+                print(f'NaN detected in fast mode estimation. Fast mode disabled.')
                 return False
 
         raise IndexError('Should not reach here')
@@ -851,7 +846,6 @@ class VAEHook:
 
         # Build task queues
         single_task_queue = build_task_queue(net, is_decoder)
-        #print(single_task_queue)
         if self.fast_mode:
             # Fast mode: downsample the input image to the tile size,
             # then estimate the group norm parameters on the downsampled image
@@ -900,7 +894,6 @@ class VAEHook:
 
             group_norm_param = GroupNormParam()
             for i in range(num_tiles) if forward else reversed(range(num_tiles)):
-                #if state.interrupted: interrupted = True ; break
 
                 tile = tiles[i].to(device)
                 input_bbox = in_bboxes[i]
@@ -908,10 +901,6 @@ class VAEHook:
 
                 interrupted = False
                 while len(task_queue) > 0:
-                    #if state.interrupted: interrupted = True ; break
-
-                    # DEBUG: current task
-                    # print('Running task: ', task_queue[0][0], ' on tile ', i, '/', num_tiles, ' with shape ', tile.shape)
                     task = task_queue.pop(0)
                     if task[0] == 'pre_norm':
                         group_norm_param.add_tile(tile, task[1])
@@ -929,16 +918,10 @@ class VAEHook:
                         task[1] = None
                     else:
                         tile = task[1](tile)
-                        #print(tiles[i].shape, tile.shape, task)
                     pbar.update(1)
 
                 if interrupted: break
 
-                # check for NaNs in the tile.
-                # If there are NaNs, we abort the process to save user's time
-                #devices.test_for_nans(tile, "vae")
-
-                #print(tiles[i].shape, tile.shape, i, num_tiles)
                 if len(task_queue) == 0:
                     tiles[i] = None
                     num_completed += 1

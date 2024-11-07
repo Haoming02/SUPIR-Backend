@@ -6,7 +6,7 @@ import torch as th
 import torch.nn as nn
 from einops import rearrange, repeat
 
-from sgm.modules.diffusionmodules.util import (
+from ssgm.modules.diffusionmodules.util import (
     avg_pool_nd,
     checkpoint,
     conv_nd,
@@ -16,10 +16,10 @@ from sgm.modules.diffusionmodules.util import (
     zero_module,
 )
 
-from sgm.modules.diffusionmodules.openaimodel import Downsample, Upsample, UNetModel, Timestep, \
+from ssgm.modules.diffusionmodules.openaimodel import Downsample, Upsample, UNetModel, Timestep, \
     TimestepEmbedSequential, ResBlock, AttentionBlock, TimestepBlock
-from sgm.modules.attention import SpatialTransformer, MemoryEfficientCrossAttention, CrossAttention
-from sgm.util import default, log_txt_as_img, exists, instantiate_from_config
+from ssgm.modules.attention import SpatialTransformer, MemoryEfficientCrossAttention, CrossAttention
+from ssgm.util import default, log_txt_as_img, exists, instantiate_from_config
 import re
 import torch
 from functools import partial
@@ -693,9 +693,6 @@ if __name__ == '__main__':
         hint = model(torch.randn([1, 4, 64, 64]).cuda(), torch.randn([1]).cuda(), torch.randn([1, 4, 64, 64]).cuda(), torch.randn([1, 77, 2048]).cuda(),
                        torch.randn([1, 2816]).cuda())
 
-        for h in hint:
-            print(h.shape)
-        #
         unet = instantiate_from_config(opt.model.params.network_config)
         unet = unet.cuda()
         _output = unet(torch.randn([1, 4, 64, 64]).cuda(), torch.randn([1]).cuda(), torch.randn([1, 77, 2048]).cuda(),
